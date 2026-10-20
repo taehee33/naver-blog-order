@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 13px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; width: 280px; box-sizing: border-box; margin: 0; padding: 14px 16px; color: #222; }
+  h1 { font-size: 14px; margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; }
+  fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+  legend { font-weight: 600; color: #03c75a; margin-bottom: 4px; padding: 0; }
+  label { display: block; padding: 3px 0; cursor: pointer; }
+  .row label { display: inline-block; margin-right: 14px; }
+  .hint { color: #888; font-size: 11px; margin-left: 20px; }
+  .saved { color: #03c75a; font-size: 11px; min-height: 0; }
+  button { width: 100%; padding: 7px 0; border: 1px solid #03c75a; background: #fff; color: #03a24a; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover { background: #effbf4; }
+  .msg { color: #888; font-size: 11px; margin-top: 6px; min-height: 0; }
+</style>
+</head>
+<body>
+  <h1>파일 정렬 설정 <label style="font-weight:400;font-size:12px;white-space:nowrap;padding:0"><input type="checkbox" id="enabled"> 사용</label></h1>
+  <fieldset>
+    <legend>정렬 기준</legend>
+    <label><input type="radio" name="criterion" value="name"> 파일명 <span class="hint">IMG_2 → IMG_10</span></label>
+    <label><input type="radio" name="criterion" value="lastModified"> 수정한 날짜</label>
+    <label><input type="radio" name="criterion" value="exif"> 촬영일 (EXIF)</label>
+    <div class="hint">JPEG·HEIC·PNG 지원. 없으면 수정일로 대체</div>
+    <label><input type="radio" name="criterion" value="size"> 크기</label>
+    <label><input type="radio" name="criterion" value="type"> 종류</label>
+  </fieldset>
+  <fieldset class="row">
+    <legend>순서</legend>
+    <label><input type="radio" name="order" value="asc"> 오름차순</label>
+    <label><input type="radio" name="order" value="desc"> 내림차순</label>
+  </fieldset>
+  <fieldset>
+    <legend>표시</legend>
+    <label><input type="checkbox" id="panel"> 정렬 결과 목록 자동으로 열기</label>
+    <label><input type="checkbox" id="thumbs"> 목록에 사진 썸네일 보기</label>
+    <label><input type="checkbox" id="toast"> 정렬할 때 화면 아래 알림</label>
+  </fieldset>
+  <button id="show">최근 정렬 결과 보기</button>
+  <div class="msg" id="msg"></div>
+  <div class="saved" id="saved"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
