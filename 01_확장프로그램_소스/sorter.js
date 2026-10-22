@@ -661,6 +661,8 @@
     .ai-go { all: unset; box-sizing: border-box; display: block; width: 100%; margin: 8px 0 4px; padding: 8px 0; text-align: center;
       background: #03c75a; color: #fff; border-radius: 8px; font-weight: 700; cursor: pointer; }
     .ai-go:hover { background: #02b351; }
+    .ai-dbg { all: unset; display: inline-block; margin: 6px 0 2px; padding: 3px 10px; border: 1px solid #ccd; border-radius: 6px;
+      font-size: 11px; color: #555; cursor: pointer; background: #fff; }
     .ai-note { margin-top: 4px; color: #667; font-size: 11px; line-height: 1.4; }
     .rot { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #e6f8ee; color: #03a24a;
       font-weight: 700; cursor: pointer; }
@@ -933,6 +935,19 @@
       origAdd.call(btn, "click", () => runRotate(r));
       box.append(btn);
     }
+    if (ai.run && (ai.run.state === "error" || ai.run.state === "partial")) {
+      const dbg = document.createElement("button");
+      dbg.className = "ai-dbg";
+      dbg.textContent = "진단 정보 복사";
+      origAdd.call(dbg, "click", () => {
+        const info = JSON.stringify({ v: "1.3.0", msg: ai.run.msg, debug: ai.debug || null, ua: navigator.userAgent }, null, 1);
+        navigator.clipboard.writeText(info).then(
+          () => (dbg.textContent = "복사됨 · 개발자에게 붙여넣어 주세요"),
+          () => (dbg.textContent = "복사 실패")
+        );
+      });
+      box.append(dbg);
+    }
     for (const t of [AI_NOTE_ROTATE, AI_NOTE_CHECK, AI_NOTE_LOCAL]) {
       const n = document.createElement("div");
       n.className = "ai-note";
@@ -1018,6 +1033,12 @@
     }
     return [];
   }
+  // 컴포넌트를 가리킬 수 있는 ID 후보 (네이버 화면 구조가 바뀌어도 하나는 맞도록)
+  function compKeysOf(c) {
+    const keys = [c.id, c.getAttribute("data-compid")];
+    for (const e of c.querySelectorAll("[data-compid]")) keys.push(e.getAttribute("data-compid"));
+    return keys.filter(Boolean);
+  }
   function snapshotCompIds() {
     try { return new Set(imageComponents().map(compIdOf)); } catch (_) { return new Set(); }
   }
@@ -1062,7 +1083,9 @@
         throw new Error("사진을 '콜라주'나 '슬라이드'로 올리면 자동으로 돌릴 수 없어요. '개별사진'으로 올려 주세요.");
       }
       if (fresh.length !== imgFiles.length) throw new Error("에디터의 사진 수가 올린 사진 수와 달라서 멈췄어요.");
-      const idOf = new Map(imgFiles.map((f, i) => [fileKey(f), compIdOf(fresh[i])]));
+      // 사진마다 ID 후보와 본문 안 순서를 기억 (편집기를 열 때 화면이 다시 그려져도 찾을 수 있게)
+      const allAtWait = imageComponents();
+      const compOf = new Map(imgFiles.map((f, i) => [fileKey(f), { keys: compKeysOf(fresh[i]), idx: allAtWait.indexOf(fresh[i]) }]));
 
       // 사진 하나를 선택하고 "사진 편집"을 열면 글 안의 사진이 모두 편집기에 들어옴
       say("네이버 사진 편집기를 여는 중…");
@@ -1078,6 +1101,23 @@
       if (!submit) throw new Error("네이버 사진 편집기가 열리지 않았어요.");
       const doc = submit.ownerDocument;
       await sleep(800);
+      // 편집기 썸네일 찾기: ① 컴포넌트 ID가 같은 썸네일 ② 없으면 본문 사진 순서와 썸네일 순서로 짝짓기
+      const thumbs = Array.from(doc.querySelectorAll(".npe_image_list_thumb_wrap"));
+      const thumbByKey = new Map(thumbs.map((t) => [t.getAttribute("data-key"), t]));
+      const allComps = imageComponents();
+      ai.debug = {
+        comps: allComps.length,
+        thumbs: thumbs.length,
+        compKeys: allComps.slice(0, 3).map(compKeysOf),
+        thumbKeys: thumbs.slice(0, 3).map((t) => t.getAttribute("data-key")),
+        counter: (doc.querySelector(".npe_btn_image_list") || {}).textContent,
+      };
+      const thumbFor = (ref) => {
+        if (!ref) return null;
+        for (const k of ref.keys) if (thumbByKey.has(k)) return thumbByKey.get(k);
+        if (ref.idx >= 0 && thumbs.length === allComps.length) return thumbs[ref.idx];
+        return null;
+      };
 
       let done = 0;
       const failed = [];
@@ -1085,8 +1125,7 @@
         const f = targets[i];
         const fix = AI_FIX[aiInfo(r, f).cls];
         say(`돌리는 중 ${i + 1}/${targets.length} · ${f.name}`);
-        const id = idOf.get(fileKey(f));
-        const thumb = id && doc.querySelector(`.npe_image_list_thumb_wrap[data-key="${CSS.escape(id)}"]`);
+        const thumb = thumbFor(compOf.get(fileKey(f)));
         if (!thumb) { failed.push(f.name); continue; }
         thumb.click();
         await waitFor(() => thumb.classList.contains("on"), 4000);
