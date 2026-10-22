@@ -249,7 +249,14 @@
     return sig;
   }
 
-  const cache = new Map(); // signature -> { ready, sorted, arr, promise }
+  const cache = new Map(); // signature -> { ready, sorted, arr, keyOf, promise }
+
+  // 사용자가 파일을 새로 고르거나 끌어다 놓은 순간 표시 → 캐시된 정렬을 다시 쓰더라도 새 업로드로 처리
+  let freshPick = false;
+  const markFreshPick = (e) => {
+    const t = e.target;
+    if (e.type === "drop" || (t instanceof HTMLInputElement && t.type === "file")) freshPick = true;
+  };
   function remember(sig, entry) {
     cache.set(sig, entry);
     if (cache.size > 30) cache.delete(cache.keys().next().value);
@@ -260,7 +267,15 @@
     if (!s.enabled || !list || list.length < 2) return null;
     const sig = signature(list, s);
     let entry = cache.get(sig);
-    if (entry) return entry;
+    if (entry) {
+      // 같은 파일을 다시 고른 경우(사진을 지우고 다시 올림 등): 정렬은 재사용하되 새 업로드로 알림
+      if (freshPick && entry.ready) {
+        freshPick = false;
+        notify({ arr: entry.arr, s, keyOf: entry.keyOf || new Map(), source: "files" });
+      }
+      return entry;
+    }
+    freshPick = false;
     const files = Array.from(list);
     if (s.criterion !== "exif") {
       const arr = sortFiles(files, s);
@@ -273,6 +288,7 @@
     entry.promise = sortFilesAsync(files, s).then(({ arr, keyOf }) => {
       entry.sorted = toFileList(arr);
       entry.arr = arr;
+      entry.keyOf = keyOf;
       entry.ready = true;
       notify({ arr, s, keyOf, source: "files" });
     });
@@ -449,6 +465,8 @@
   const WATCH = { change: 1, input: 1, drop: 1 };
   const wrappers = new WeakMap();
   const origAdd = EventTarget.prototype.addEventListener;
+  // 에디터 리스너보다 먼저(캡처 단계) "새로 고름"을 표시
+  for (const type of ["input", "change", "drop"]) origAdd.call(window, type, markFreshPick, true);
   const origRemove = EventTarget.prototype.removeEventListener;
 
   function wrap(listener) {

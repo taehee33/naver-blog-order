@@ -27,6 +27,7 @@ const pre = addComp('data:image/gif;base64,R0lGODlhAQABAAAAACw='); pre.dataset.f
 document.getElementById('up').addEventListener('change', (e) => {
   const files = Array.from(e.target.files);
   window.__uploadOrder = files.map(f=>f.name);
+  e.target.value=''; // 실제 에디터처럼 업로드 후 파일 선택 초기화
   setTimeout(()=>{ for (const f of files){ const c=addComp(URL.createObjectURL(f)); c.dataset.file=f.name; } }, 500);
 });
 document.addEventListener('mousedown', (e) => { if (e.target.matches('img.se-image-resource')) document.getElementById('ctx').style.display='block'; });

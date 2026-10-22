@@ -72,6 +72,27 @@ const fs = require('fs'), path = require('path');
       await new Promise(r => setTimeout(r, 500));
     }
   }
+  if (process.env.REUP) {
+    console.log('ROUND1 rotations', JSON.stringify(await fr.evaluate(() => window.__rot)));
+    // 사용자가 [완료] → 사진 전부 삭제 → 같은 사진 다시 올림
+    await fr.evaluate(() => { document.querySelector('.npe_btn_submit').click(); document.getElementById('npe').style.display='none';
+      document.querySelectorAll('.se-component').forEach(c => { if (c.dataset.file !== 'PRE') c.remove(); }); window.__rot = {}; });
+    await new Promise(r => setTimeout(r, 1500));
+    await fr.setInputFiles('#up', imgs);
+    const t2 = Date.now(); let s2 = '';
+    for (;;) {
+      s2 = await fr.evaluate(() => { const h = document.getElementById('nbo-panel-host'); const st = h && h.shadowRoot.querySelector('.ai-status'); return st ? st.textContent : ''; });
+      if (/회전 추천/.test(s2) || Date.now() - t2 > 30000) break;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    console.log('REUP status:', s2, (Date.now() - t2) + 'ms');
+    await fr.evaluate(() => { const b = document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-go'); b && b.click(); });
+    for (let i = 0; i < 60; i++) {
+      const s = await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-status').textContent);
+      if (/돌렸어요|못|찾지|멈췄|열리지|열려 있어요/.test(s)) { console.log('REUP RUN:', s); break; }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
   console.log('rotations', JSON.stringify(await fr.evaluate(() => window.__rot)), 'submitted', await fr.evaluate(() => !!window.__submitted));
   await page.screenshot({ path: 'after.png' });
   console.log(logs.filter(l => /nbo|순서|error|Error/i.test(l)).slice(0, 10).join('\n'));
