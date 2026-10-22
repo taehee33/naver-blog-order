@@ -1152,7 +1152,8 @@
       };
 
       let done = 0;
-      const failed = [];
+      const failed = []; // 이번 편집기에 없는 사진
+      const stuck = []; // 편집기에는 있는데 회전 버튼을 누르지 못한 사진
       for (let i = 0; i < targets.length; i++) {
         const f = targets[i];
         const fix = AI_FIX[aiInfo(r, f).cls];
@@ -1163,22 +1164,45 @@
         thumb.click();
         await waitFor(() => thumb.classList.contains("on"), 4000);
         await sleep(400);
-        const crop = doc.querySelector("button.npe_btn_crop");
-        if (crop && !crop.classList.contains("on")) crop.click();
+        // 자르기·회전 패널 열기: [적용] 뒤에는 패널이 닫혀도 버튼 표시(on)가 남아 있을 수 있어
+        // 버튼 표시 대신 회전 버튼이 실제로 보이는지로 판단하고, 안 보이면 자르기 버튼을 눌러 엶
         const sel = fix.dir === "left" ? "button.npe_btn_left_rotate" : "button.npe_btn_right_rotate";
-        const btn = await waitFor(() => { const b = doc.querySelector(sel); return visible(b) && b; }, 4000);
-        if (!btn) { failed.push(f.name); continue; }
+        const rotBtn = () => { const b = doc.querySelector(sel); return visible(b) && b; };
+        let btn = rotBtn();
+        for (let t = 0; !btn && t < 2; t++) {
+          const crop = doc.querySelector("button.npe_btn_crop");
+          if (!crop) break;
+          crop.click();
+          btn = await waitFor(rotBtn, 2500);
+        }
+        if (!btn) { stuck.push(f.name); continue; }
         for (let t = 0; t < fix.times; t++) { btn.click(); await sleep(500); }
-        const confirm = doc.querySelector("button.npe_btn_confirm");
-        if (confirm) confirm.click();
-        await sleep(700);
+        const confirm = await waitFor(() => { const b = doc.querySelector("button.npe_btn_confirm"); return visible(b) && b; }, 2000);
+        if (!confirm) { stuck.push(f.name); continue; }
+        confirm.click();
+        // 패널이 닫힐 때까지 잠깐 기다림
+        await waitFor(() => !rotBtn(), 2000);
+        await sleep(400);
         done++;
         ai.rotated.add(fileKey(f));
       }
+      ai.debug.stuck = stuck;
+      ai.debug.notInEditor = failed;
       if (!done) {
-        throw new Error(`편집기에서 돌릴 사진을 찾지 못했어요 (편집기 사진 ${thumbs.length}장). [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`);
+        throw new Error(
+          stuck.length
+            ? `편집기에서 사진은 찾았는데 회전 버튼을 누르지 못했어요. [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`
+            : `편집기에서 돌릴 사진을 찾지 못했어요 (편집기 사진 ${thumbs.length}장). [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`
+        );
       }
-      if (failed.length) {
+      if (stuck.length) {
+        say(
+          `${done}장을 돌렸어요. ${stuck.length}장(${stuck.join(", ")})은 회전 버튼을 누르지 못했어요. ` +
+            `편집기에서 직접 돌리거나, [취소] 후 [진단 정보 복사]를 보내 주세요.`,
+          "partial"
+        );
+        editorBanner(doc, `${done}장을 돌렸어요 · ${stuck.length}장은 직접 확인해 주세요 · 원본 파일은 그대로예요`);
+      } else if (failed.length) {
         say(
           `${done}장을 돌렸어요. 남은 ${failed.length}장은 이번 편집기에 들어 있지 않아요. ` +
             `오른쪽 위 [완료]를 눌러 저장한 뒤 [남은 ${failed.length}장 돌리기]를 눌러 주세요.`,
