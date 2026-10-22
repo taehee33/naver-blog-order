@@ -844,14 +844,14 @@
 
   const aiInfo = (r, f) => (r.ai ? r.ai.byKey.get(fileKey(f)) : null);
   const aiRecommended = (r) => r.arr.filter((f) => { const a = aiInfo(r, f); return a && AI_FIX[a.cls]; });
-  const aiTargets = (r) => aiRecommended(r).filter((f) => !r.ai.skip.has(fileKey(f)));
+  const aiTargets = (r) => aiRecommended(r).filter((f) => !r.ai.skip.has(fileKey(f)) && !r.ai.rotated.has(fileKey(f)));
 
   function maybeStartAi(r) {
     const s = settings();
     if (!s.aiReady || r.ai) return;
     const files = r.arr.filter(canDecode); // HEIC 등 브라우저가 열 수 없는 형식은 건너뜀
     if (!files.length) return;
-    r.ai = { state: "running", done: 0, total: files.length, byKey: new Map(), skip: new Set(), error: null, run: null };
+    r.ai = { state: "running", done: 0, total: files.length, byKey: new Map(), skip: new Set(), rotated: new Set(), error: null, run: null };
     if (panelHost && panelHost.isConnected && lastResult === r) showPanel(r); // 열려 있는 목록에 AI 영역 표시
     (async () => {
       // 에디터가 파일 목록을 연달아 여러 번 읽는 경우가 있어, 목록이 정해질 때까지 잠깐 기다림
@@ -928,10 +928,10 @@
     box.append(head, status);
 
     const targets = ai.state === "done" ? aiTargets(r) : [];
-    if (targets.length && (!ai.run || ai.run.state === "error")) {
+    if (targets.length && (!ai.run || ai.run.state === "error" || ai.run.state === "partial")) {
       const btn = document.createElement("button");
       btn.className = "ai-go";
-      btn.textContent = `네이버 편집기로 ${targets.length}장 돌리기`;
+      btn.textContent = ai.rotated.size ? `남은 ${targets.length}장 돌리기` : `네이버 편집기로 ${targets.length}장 돌리기`;
       origAdd.call(btn, "click", () => runRotate(r));
       box.append(btn);
     }
@@ -1065,7 +1065,7 @@
 
   async function runRotate(r) {
     const ai = r.ai;
-    if (!ai || (ai.run && ai.run.state !== "error")) return;
+    if (!ai || (ai.run && ai.run.state !== "error" && ai.run.state !== "partial")) return;
     const targets = aiTargets(r);
     if (!targets.length) return;
     const say = (msg, state = "running") => { ai.run = { state, msg }; renderAi(r); };
@@ -1087,7 +1087,10 @@
       const allAtWait = imageComponents();
       const compOf = new Map(imgFiles.map((f, i) => [fileKey(f), { keys: compKeysOf(fresh[i]), idx: allAtWait.indexOf(fresh[i]) }]));
 
-      // 사진 하나를 선택하고 "사진 편집"을 열면 글 안의 사진이 모두 편집기에 들어옴
+      if (findVisible(".npe_btn_submit")) {
+        throw new Error("사진 편집기가 열려 있어요. 편집기에서 [완료]나 [취소]를 누른 뒤 다시 눌러 주세요.");
+      }
+      // 돌릴 사진 하나를 선택하고 "사진 편집"을 엶 (네이버가 그 주변 사진들을 편집기에 함께 넣어 줌)
       say("네이버 사진 편집기를 여는 중…");
       const firstComp = fresh[imgFiles.indexOf(targets[0])];
       const img = firstComp.querySelector("img.se-image-resource");
@@ -1100,7 +1103,17 @@
       const submit = await waitFor(() => findVisible(".npe_btn_submit"), 15000);
       if (!submit) throw new Error("네이버 사진 편집기가 열리지 않았어요.");
       const doc = submit.ownerDocument;
-      await sleep(800);
+      // 썸네일 줄은 늦게 그려지거나 접혀 있을 수 있음 → 기다렸다가, 없으면 "이미지 n / m" 버튼으로 펼침
+      say("편집기에 사진 목록이 뜨길 기다리는 중…");
+      const countThumbs = () => doc.querySelectorAll(".npe_image_list_thumb_wrap").length;
+      let listToggled = false;
+      if (!(await waitFor(countThumbs, 4000))) {
+        const listBtn = doc.querySelector(".npe_btn_image_list");
+        if (listBtn) { listBtn.click(); listToggled = true; }
+        await waitFor(countThumbs, 8000);
+      }
+      // 개수가 더 늘지 않을 때까지 잠깐 기다림
+      for (let prev = -1, n = countThumbs(), t = 0; n !== prev && t < 10; t++) { prev = n; await sleep(400); n = countThumbs(); }
       // 편집기 썸네일 찾기: ① 컴포넌트 ID가 같은 썸네일 ② 없으면 본문 사진 순서와 썸네일 순서로 짝짓기
       const thumbs = Array.from(doc.querySelectorAll(".npe_image_list_thumb_wrap"));
       const thumbByKey = new Map(thumbs.map((t) => [t.getAttribute("data-key"), t]));
@@ -1111,6 +1124,7 @@
         compKeys: allComps.slice(0, 3).map(compKeysOf),
         thumbKeys: thumbs.slice(0, 3).map((t) => t.getAttribute("data-key")),
         counter: (doc.querySelector(".npe_btn_image_list") || {}).textContent,
+        listToggled,
       };
       const thumbFor = (ref) => {
         if (!ref) return null;
@@ -1127,6 +1141,7 @@
         say(`돌리는 중 ${i + 1}/${targets.length} · ${f.name}`);
         const thumb = thumbFor(compOf.get(fileKey(f)));
         if (!thumb) { failed.push(f.name); continue; }
+        thumb.scrollIntoView({ block: "nearest", inline: "center" });
         thumb.click();
         await waitFor(() => thumb.classList.contains("on"), 4000);
         await sleep(400);
@@ -1140,13 +1155,22 @@
         if (confirm) confirm.click();
         await sleep(700);
         done++;
+        ai.rotated.add(fileKey(f));
       }
-      say(
-        `${done}장을 네이버 편집기로 돌렸어요. 확인한 뒤 오른쪽 위 [완료]를 눌러 주세요.` +
-          (failed.length ? ` 못 돌린 사진 ${failed.length}장: ${failed.join(", ")}` : ""),
-        failed.length ? "partial" : "done"
-      );
-      editorBanner(doc, `AI 추천대로 ${done}장을 돌렸어요 · 확인 후 [완료]를 눌러 주세요 · 원본 파일은 그대로예요`);
+      if (!done) {
+        throw new Error(`편집기에서 돌릴 사진을 찾지 못했어요 (편집기 사진 ${thumbs.length}장). [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`);
+      }
+      if (failed.length) {
+        say(
+          `${done}장을 돌렸어요. 남은 ${failed.length}장은 이번 편집기에 들어 있지 않아요. ` +
+            `오른쪽 위 [완료]를 눌러 저장한 뒤 [남은 ${failed.length}장 돌리기]를 눌러 주세요.`,
+          "partial"
+        );
+        editorBanner(doc, `${done}장을 돌렸어요 · [완료]를 누른 뒤 남은 ${failed.length}장도 돌려 주세요 · 원본 파일은 그대로예요`);
+      } else {
+        say(`${done}장을 네이버 편집기로 돌렸어요. 확인한 뒤 오른쪽 위 [완료]를 눌러 주세요.`, "done");
+        editorBanner(doc, `AI 추천대로 ${done}장을 돌렸어요 · 확인 후 [완료]를 눌러 주세요 · 원본 파일은 그대로예요`);
+      }
     } catch (e) {
       say(String((e && e.message) || e), "error");
     }

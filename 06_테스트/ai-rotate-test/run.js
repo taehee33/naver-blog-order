@@ -9,7 +9,7 @@ const fs = require('fs'), path = require('path');
   const logs = [];
   await ctx.route('https://blog.naver.com/**', (route) => {
     const u = route.request().url();
-    const body = fs.readFileSync(u.includes('mock-editor') ? 'mock-editor.html' : 'mock-top.html');
+    const body = fs.readFileSync(u.includes('mock-editor') ? (process.env.MOCK || 'mock-editor.html') : 'mock-top.html');
     route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body });
   });
   let sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker');
@@ -59,6 +59,18 @@ const fs = require('fs'), path = require('path');
     const s = await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-status').textContent);
     if (/돌렸어요|못|찾지|없어요|멈췄|열리지/.test(s)) { console.log('RUN:', s); break; }
     await new Promise(r => setTimeout(r, 500));
+  }
+  if (process.env.ROUND2) {
+    console.log('subset1', JSON.stringify(await fr.evaluate(() => window.__subset)));
+    console.log('BTN2:', await fr.evaluate(() => { const b=document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-go'); return b && b.textContent; }));
+    await fr.evaluate(() => document.querySelector('.npe_btn_submit').click()); // 사용자가 [완료]
+    await new Promise(r => setTimeout(r, 500));
+    await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-go').click());
+    for (let i = 0; i < 60; i++) {
+      const s = await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-status').textContent);
+      if (!/중…|돌리는 중/.test(s)) { console.log('RUN2:', s); break; }
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
   console.log('rotations', JSON.stringify(await fr.evaluate(() => window.__rot)), 'submitted', await fr.evaluate(() => !!window.__submitted));
   await page.screenshot({ path: 'after.png' });
