@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font: 13px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; width: 280px; box-sizing: border-box; margin: 0; padding: 14px 16px; color: #222; }
+  body { font: 13px/1.5 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; width: 300px; box-sizing: border-box; margin: 0; padding: 14px 16px; color: #222; }
   h1 { font-size: 14px; margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; }
   fieldset { border: 0; padding: 0; margin: 0 0 12px; }
   legend { font-weight: 600; color: #03c75a; margin-bottom: 4px; padding: 0; }
@@ -14,6 +14,16 @@
   button { width: 100%; padding: 7px 0; border: 1px solid #03c75a; background: #fff; color: #03a24a; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer; }
   button:hover { background: #effbf4; }
   .msg { color: #888; font-size: 11px; margin-top: 6px; min-height: 0; }
+  .hint2 { color: #888; font-size: 11px; }
+  .ai-status { margin: 6px 0 4px; font-size: 12px; color: #444; }
+  .ai-status.err { color: #d93025; }
+  .bar { height: 4px; background: #eef0f2; border-radius: 2px; overflow: hidden; display: none; }
+  .bar.on { display: block; }
+  .bar > div { height: 100%; width: 0; background: #03c75a; transition: width .2s; }
+  button.sub { width: auto; padding: 3px 10px; margin-top: 4px; font-weight: 400; font-size: 12px; border-color: #ccc; color: #555; }
+  button.sub:disabled { opacity: .4; cursor: default; }
+  .notes { margin: 8px 0 0; padding: 8px 10px 8px 22px; background: #f6f8f9; border-radius: 6px; color: #666; font-size: 11px; line-height: 1.45; }
+  .notes li { margin: 2px 0; }
 </style>
 </head>
 <body>
@@ -38,9 +48,25 @@
     <label><input type="checkbox" id="thumbs"> 목록에 사진 썸네일 보기</label>
     <label><input type="checkbox" id="toast"> 정렬할 때 화면 아래 알림</label>
   </fieldset>
+  <fieldset>
+    <legend>사진 방향 추천 (AI)</legend>
+    <label><input type="radio" name="aiMode" value="off"> 사용 안 함</label>
+    <label><input type="radio" name="aiMode" value="normal"> 일반 모드 <span class="hint2">약 40MB · 정확도 약 98%</span></label>
+    <label><input type="radio" name="aiMode" value="light"> 가벼운 모드 <span class="hint2">약 21MB · 정확도 약 96%</span></label>
+    <div class="ai-status" id="aiStatus"></div>
+    <div class="bar" id="aiBarWrap"><div id="aiBar"></div></div>
+    <button id="aiDelete" class="sub">모델 삭제</button>
+    <ul class="notes">
+      <li>세로로 찍었는데 누워 있는 사진을 찾아 회전을 추천해요. 처음 켤 때 AI 모델을 한 번 내려받아요.</li>
+      <li>회전은 네이버 에디터의 「사진 편집」 기능으로 해요. 내 컴퓨터의 원본 파일은 건드리지 않아요.</li>
+      <li>사진은 내 컴퓨터 안에서만 분석되고 외부로 전송되지 않아요.</li>
+      <li>AI 판단이라 틀릴 수 있어요. 편집기에서 확인한 뒤 [완료]를 눌러 주세요.</li>
+    </ul>
+  </fieldset>
   <button id="show">최근 정렬 결과 보기</button>
   <div class="msg" id="msg"></div>
   <div class="saved" id="saved"></div>
+  <script src="ai-config.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

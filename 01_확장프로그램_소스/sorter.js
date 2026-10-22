@@ -5,8 +5,8 @@
   if (window.__nboInstalled) return;
   window.__nboInstalled = true;
 
-  const APP = "네이버 블로그 파일 순서 유지";
-  const DEFAULTS = { enabled: true, criterion: "name", order: "asc", toast: true, panel: true, thumbs: true };
+  const APP = "네이버 블로그 사진(파일) 업로드 순서 유지";
+  const DEFAULTS = { enabled: true, criterion: "name", order: "asc", toast: true, panel: true, thumbs: true, aiMode: "off" };
   const LABEL = { name: "파일명", lastModified: "수정한 날짜", exif: "촬영일", size: "크기", type: "종류" };
   const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
 
@@ -511,10 +511,13 @@
     if (lastResult && now - lastNotify < 800 && lastResult.arr.length === result.arr.length) return;
     lastNotify = now;
     lastResult = Object.assign({ at: now }, result);
+    lastResult.preCompIds = snapshotCompIds(); // 이번 업로드 전부터 있던 사진 (AI 회전 대상에서 제외)
     const s = result.s;
+    const current = lastResult;
     const run = () => {
       if (s.toast) showToast(result);
-      if (s.panel) showPanel(lastResult);
+      if (s.panel) showPanel(current);
+      maybeStartAi(current);
     };
     document.body ? run() : origAdd.call(document, "DOMContentLoaded", run, { once: true });
     console.info("[" + APP + "]", result.arr.map((f) => f.name));
@@ -650,6 +653,20 @@
     .val { grid-column: 2; color: #999; font-size: 11px; }
     footer { padding: 8px 14px 10px; border-top: 1px solid #eef0f2; color: #777; font-size: 11px; }
     footer label { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .ai { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #f3fbf6; border: 1px solid #d3f0de; }
+    .ai-head { font-weight: 700; color: #03a24a; }
+    .ai-status { margin-top: 2px; color: #222; font-weight: 600; }
+    .ai-status.ai-error { color: #d93025; }
+    .ai-status.ai-partial { color: #b06000; }
+    .ai-go { all: unset; box-sizing: border-box; display: block; width: 100%; margin: 8px 0 4px; padding: 8px 0; text-align: center;
+      background: #03c75a; color: #fff; border-radius: 8px; font-weight: 700; cursor: pointer; }
+    .ai-go:hover { background: #02b351; }
+    .ai-note { margin-top: 4px; color: #667; font-size: 11px; line-height: 1.4; }
+    .rot { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #e6f8ee; color: #03a24a;
+      font-weight: 700; cursor: pointer; }
+    .rot:empty { display: none; }
+    .rot.low { background: #fff4e0; color: #b06000; }
+    .rot.skip { background: #f1f3f5; color: #aaa; text-decoration: line-through; }
   `;
 
   let panelHost = null;
@@ -693,6 +710,8 @@
       (miss ? `촬영일 없는 ${miss}개는 수정일 기준 · ` : "") +
       fmtDate(r.at);
     header.append(sub);
+    const aiBox = buildAiBox(r);
+    if (aiBox) header.append(aiBox);
 
     const ol = document.createElement("ol");
     const showThumbs = settings().thumbs !== false;
@@ -726,6 +745,7 @@
       val.className = "val";
       val.textContent = valueOf(r, f);
       li.append(n, name, val);
+      attachAiBadge(r, f, val);
       if (showThumbs) {
         li.classList.add("has-thumb");
         const ph = document.createElement("div");
@@ -750,6 +770,347 @@
 
     wrap.append(header, ol, footer);
     root.append(style, wrap);
+    paintBadges(r);
+  }
+
+  // ======================================================================
+  // 사진 방향 추천 (AI)
+  // - 확장은 사진을 "읽기만" 합니다. 384×384로 줄인 픽셀을 확장 내부 AI에 넘겨 방향만 판단해요.
+  // - 회전은 네이버 에디터의 "사진 편집 → 자르기, 회전" 버튼을 대신 눌러 주는 방식이라
+  //   내 컴퓨터의 원본 파일은 바뀌지 않습니다. 마지막 [완료]는 사용자가 확인 후 직접 누릅니다.
+  // ======================================================================
+  const AI_SIZE = 384;
+  const AI_LOW = 0.85; // 이보다 낮으면 "확인 필요"
+  // 모델 출력 k = "사진이 반시계 방향으로 k×90° 돌아가 있음" → 바로 세우는 버튼
+  const AI_FIX = {
+    1: { dir: "right", times: 1, label: "↻ 오른쪽 90°" },
+    2: { dir: "left", times: 2, label: "↺ 180°" },
+    3: { dir: "left", times: 1, label: "↺ 왼쪽 90°" },
+  };
+  const AI_NOTE_ROTATE = "회전은 네이버 에디터의 「사진 편집 → 자르기, 회전」 기능으로 해요. 내 컴퓨터의 원본 파일은 건드리지 않아요.";
+  const AI_NOTE_CHECK = "AI 판단이라 틀릴 수 있어요. 추천 표시를 눌러 뺄 수 있고, 편집기에서 확인한 뒤 [완료]를 눌러 주세요.";
+  const AI_NOTE_LOCAL = "사진은 내 컴퓨터 안에서만 분석되고 어디로도 전송되지 않아요.";
+
+  let aiSeq = 0;
+  const aiPending = new Map();
+  const aiCache = new Map(); // fileKey -> { cls, conf } (같은 사진을 다시 분석하지 않음)
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+  origAdd.call(window, "message", (e) => {
+    if (e.source !== window || !e.data || e.data.__nbo !== "ai-result") return;
+    const p = aiPending.get(e.data.id);
+    if (!p) return;
+    aiPending.delete(e.data.id);
+    if (e.data.ok && Array.isArray(e.data.probs)) p.resolve(e.data.probs);
+    else p.reject(new Error(e.data.error || "분석 실패"));
+  });
+
+  const isImageFile = (f) =>
+    /^image\//i.test(f.type) || /\.(jpe?g|png|gif|webp|bmp|avif|heic|heif|hif)$/i.test(f.name);
+
+  // 원본 파일은 그대로 두고, 분석용으로 작게 줄인 픽셀만 만듦
+  async function aiPixels(f) {
+    const bmp = await createImageBitmap(f, { resizeWidth: AI_SIZE, resizeHeight: AI_SIZE, resizeQuality: "high" });
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = AI_SIZE;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(bmp, 0, 0);
+      const rgba = ctx.getImageData(0, 0, AI_SIZE, AI_SIZE).data;
+      const rgb = new Uint8Array(AI_SIZE * AI_SIZE * 3);
+      for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+        rgb[j] = rgba[i];
+        rgb[j + 1] = rgba[i + 1];
+        rgb[j + 2] = rgba[i + 2];
+      }
+      return rgb.buffer;
+    } finally {
+      bmp.close();
+    }
+  }
+
+  function aiAsk(buf) {
+    return new Promise((resolve, reject) => {
+      const id = ++aiSeq;
+      aiPending.set(id, { resolve, reject });
+      window.postMessage({ __nbo: "ai-analyze", id, rgb: buf }, location.origin, [buf]);
+      setTimeout(() => {
+        if (aiPending.delete(id)) reject(new Error("시간 초과"));
+      }, 120000);
+    });
+  }
+
+  const aiInfo = (r, f) => (r.ai ? r.ai.byKey.get(fileKey(f)) : null);
+  const aiRecommended = (r) => r.arr.filter((f) => { const a = aiInfo(r, f); return a && AI_FIX[a.cls]; });
+  const aiTargets = (r) => aiRecommended(r).filter((f) => !r.ai.skip.has(fileKey(f)));
+
+  function maybeStartAi(r) {
+    const s = settings();
+    if (!s.aiReady || r.ai) return;
+    const files = r.arr.filter(canDecode); // HEIC 등 브라우저가 열 수 없는 형식은 건너뜀
+    if (!files.length) return;
+    r.ai = { state: "running", done: 0, total: files.length, byKey: new Map(), skip: new Set(), error: null, run: null };
+    if (panelHost && panelHost.isConnected && lastResult === r) showPanel(r); // 열려 있는 목록에 AI 영역 표시
+    (async () => {
+      // 에디터가 파일 목록을 연달아 여러 번 읽는 경우가 있어, 목록이 정해질 때까지 잠깐 기다림
+      await sleep(700);
+      if (lastResult !== r) return;
+      for (const f of files) {
+        if (aiCache.has(fileKey(f))) {
+          r.ai.byKey.set(fileKey(f), aiCache.get(fileKey(f)));
+          r.ai.done++;
+          continue;
+        }
+        try {
+          const probs = await aiAsk(await aiPixels(f));
+          const cls = probs.indexOf(Math.max(...probs));
+          const info = { cls, conf: probs[cls] };
+          r.ai.byKey.set(fileKey(f), info);
+          aiCache.set(fileKey(f), info);
+          if (aiCache.size > 500) aiCache.delete(aiCache.keys().next().value);
+        } catch (e) {
+          if (/model-missing/.test(String(e && e.message))) {
+            r.ai.state = "error";
+            r.ai.error = "AI 모델이 없어요. 확장 설정 창에서 다시 내려받아 주세요.";
+            renderAi(r);
+            return;
+          }
+          r.ai.byKey.set(fileKey(f), { cls: -1, conf: 0 });
+        }
+        r.ai.done++;
+        renderAi(r);
+      }
+      r.ai.state = "done";
+      renderAi(r);
+      // 돌릴 사진이 있으면 목록 패널을 열어 알려 줌
+      if (aiRecommended(r).length && lastResult === r && (!panelHost || !panelHost.isConnected)) showPanel(r);
+    })();
+  }
+
+  // ----- 패널 UI -----
+  function buildAiBox(r) {
+    if (!r.ai) return null;
+    const box = document.createElement("div");
+    box.className = "ai";
+    r._ui = { box, badges: new Map() };
+    paintAiBox(r);
+    return box;
+  }
+
+  function paintAiBox(r) {
+    const ui = r._ui;
+    if (!ui) return;
+    const box = ui.box;
+    const ai = r.ai;
+    box.textContent = "";
+    const head = document.createElement("div");
+    head.className = "ai-head";
+    head.textContent = "사진 방향 추천 (AI)";
+    const status = document.createElement("div");
+    status.className = "ai-status";
+    const recs = aiRecommended(r);
+    const low = recs.filter((f) => aiInfo(r, f).conf < AI_LOW).length;
+    if (ai.run) {
+      status.textContent = ai.run.msg;
+      status.classList.add("ai-" + ai.run.state);
+    } else if (ai.state === "error") {
+      status.textContent = ai.error;
+      status.classList.add("ai-error");
+    } else if (ai.state === "running") {
+      status.textContent = `분석 중 ${ai.done}/${ai.total}`;
+    } else if (recs.length) {
+      status.textContent = `회전 추천 ${recs.length}장` + (low ? ` · 확인 필요 ${low}장` : "");
+    } else {
+      status.textContent = `${ai.total}장 모두 방향이 맞아 보여요`;
+    }
+    box.append(head, status);
+
+    const targets = ai.state === "done" ? aiTargets(r) : [];
+    if (targets.length && (!ai.run || ai.run.state === "error")) {
+      const btn = document.createElement("button");
+      btn.className = "ai-go";
+      btn.textContent = `네이버 편집기로 ${targets.length}장 돌리기`;
+      origAdd.call(btn, "click", () => runRotate(r));
+      box.append(btn);
+    }
+    for (const t of [AI_NOTE_ROTATE, AI_NOTE_CHECK, AI_NOTE_LOCAL]) {
+      const n = document.createElement("div");
+      n.className = "ai-note";
+      n.textContent = t;
+      box.append(n);
+    }
+  }
+
+  function attachAiBadge(r, f, holder) {
+    if (!r._ui) return;
+    const b = document.createElement("span");
+    b.className = "rot";
+    origAdd.call(b, "click", () => {
+      if (!r.ai || r.ai.run) return;
+      const k = fileKey(f);
+      r.ai.skip.has(k) ? r.ai.skip.delete(k) : r.ai.skip.add(k);
+      renderAi(r);
+    });
+    holder.append(b);
+    r._ui.badges.set(fileKey(f), { el: b, f });
+  }
+
+  function paintBadges(r) {
+    if (!r._ui) return;
+    for (const { el, f } of r._ui.badges.values()) {
+      const a = aiInfo(r, f);
+      const fix = a && AI_FIX[a.cls];
+      el.className = "rot";
+      if (!fix) { el.textContent = ""; el.title = ""; continue; }
+      const skipped = r.ai.skip.has(fileKey(f));
+      el.textContent = `${fix.label} ${Math.round(a.conf * 100)}%` + (a.conf < AI_LOW ? " · 확인 필요" : "");
+      el.title = skipped ? "눌러서 다시 넣기" : "눌러서 이 사진은 빼기";
+      if (a.conf < AI_LOW) el.classList.add("low");
+      if (skipped) el.classList.add("skip");
+    }
+  }
+
+  function renderAi(r) {
+    if (!r._ui || !r._ui.box.isConnected) return;
+    paintAiBox(r);
+    paintBadges(r);
+  }
+
+  // ----- 네이버 에디터 조작 (사진 편집기의 회전 버튼을 대신 누름) -----
+  const visible = (el) => { if (!el) return false; const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+  async function waitFor(fn, ms = 8000, step = 150) {
+    const t0 = Date.now();
+    for (;;) {
+      let v = null;
+      try { v = fn(); } catch (_) {}
+      if (v) return v;
+      if (Date.now() - t0 > ms) return null;
+      await sleep(step);
+    }
+  }
+  function editorDocs() {
+    const docs = [document];
+    for (const f of document.querySelectorAll("iframe")) {
+      try { if (f.contentDocument) docs.push(f.contentDocument); } catch (_) {}
+    }
+    return docs;
+  }
+  function findVisible(sel) {
+    for (const d of editorDocs()) {
+      const el = Array.from(d.querySelectorAll(sel)).find(visible);
+      if (el) return el;
+    }
+    return null;
+  }
+  function compIdOf(c) {
+    const e = c.querySelector("[data-compid]");
+    return (e && e.getAttribute("data-compid")) || c.id || null;
+  }
+  // 에디터 본문의 사진 컴포넌트 (문서 순서)
+  function imageComponents() {
+    for (const d of editorDocs()) {
+      const comps = [];
+      for (const img of d.querySelectorAll("img.se-image-resource")) {
+        const c = img.closest(".se-component");
+        if (c && !comps.includes(c)) comps.push(c);
+      }
+      if (comps.length) return comps;
+    }
+    return [];
+  }
+  function snapshotCompIds() {
+    try { return new Set(imageComponents().map(compIdOf)); } catch (_) { return new Set(); }
+  }
+  function pressLikeUser(el) {
+    const b = el.getBoundingClientRect();
+    const opt = { bubbles: true, cancelable: true, view: el.ownerDocument.defaultView, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0 };
+    const W = el.ownerDocument.defaultView;
+    el.dispatchEvent(new W.PointerEvent("pointerdown", opt));
+    el.dispatchEvent(new W.MouseEvent("mousedown", opt));
+    el.dispatchEvent(new W.PointerEvent("pointerup", opt));
+    el.dispatchEvent(new W.MouseEvent("mouseup", opt));
+    el.dispatchEvent(new W.MouseEvent("click", opt));
+  }
+  function editorBanner(doc, text) {
+    const el = doc.createElement("div");
+    el.textContent = text;
+    el.style.cssText =
+      "position:fixed;z-index:2147483647;left:50%;top:76px;transform:translateX(-50%);background:#03c75a;color:#fff;" +
+      "padding:10px 18px;border-radius:8px;font:600 13px/1.4 -apple-system,'Apple SD Gothic Neo',sans-serif;" +
+      "box-shadow:0 4px 16px rgba(0,0,0,.3);pointer-events:none;max-width:calc(100vw - 32px)";
+    (doc.body || doc.documentElement).appendChild(el);
+    setTimeout(() => el.remove(), 9000);
+  }
+
+  async function runRotate(r) {
+    const ai = r.ai;
+    if (!ai || (ai.run && ai.run.state !== "error")) return;
+    const targets = aiTargets(r);
+    if (!targets.length) return;
+    const say = (msg, state = "running") => { ai.run = { state, msg }; renderAi(r); };
+    try {
+      say("에디터에 사진이 다 올라오길 기다리는 중…");
+      const imgFiles = r.arr.filter(isImageFile);
+      const pre = r.preCompIds || new Set();
+      let fresh = [];
+      const ready = await waitFor(() => {
+        fresh = imageComponents().filter((c) => !pre.has(compIdOf(c)));
+        return fresh.length >= imgFiles.length;
+      }, 60000, 500);
+      if (!ready) throw new Error(`에디터에서 이번에 올린 사진 ${imgFiles.length}장을 찾지 못했어요. 업로드가 끝난 뒤 다시 눌러 주세요.`);
+      if (fresh.some((c) => c.querySelectorAll("img.se-image-resource").length > 1)) {
+        throw new Error("사진을 '콜라주'나 '슬라이드'로 올리면 자동으로 돌릴 수 없어요. '개별사진'으로 올려 주세요.");
+      }
+      if (fresh.length !== imgFiles.length) throw new Error("에디터의 사진 수가 올린 사진 수와 달라서 멈췄어요.");
+      const idOf = new Map(imgFiles.map((f, i) => [fileKey(f), compIdOf(fresh[i])]));
+
+      // 사진 하나를 선택하고 "사진 편집"을 열면 글 안의 사진이 모두 편집기에 들어옴
+      say("네이버 사진 편집기를 여는 중…");
+      const firstComp = fresh[imgFiles.indexOf(targets[0])];
+      const img = firstComp.querySelector("img.se-image-resource");
+      img.scrollIntoView({ block: "center" });
+      await sleep(300);
+      pressLikeUser(img);
+      const editBtn = await waitFor(() => findVisible("button.se-image-edit-toolbar-button"), 5000);
+      if (!editBtn) throw new Error("사진 편집 버튼을 찾지 못했어요. 네이버 화면이 바뀌었을 수 있어요.");
+      editBtn.click();
+      const submit = await waitFor(() => findVisible(".npe_btn_submit"), 15000);
+      if (!submit) throw new Error("네이버 사진 편집기가 열리지 않았어요.");
+      const doc = submit.ownerDocument;
+      await sleep(800);
+
+      let done = 0;
+      const failed = [];
+      for (let i = 0; i < targets.length; i++) {
+        const f = targets[i];
+        const fix = AI_FIX[aiInfo(r, f).cls];
+        say(`돌리는 중 ${i + 1}/${targets.length} · ${f.name}`);
+        const id = idOf.get(fileKey(f));
+        const thumb = id && doc.querySelector(`.npe_image_list_thumb_wrap[data-key="${CSS.escape(id)}"]`);
+        if (!thumb) { failed.push(f.name); continue; }
+        thumb.click();
+        await waitFor(() => thumb.classList.contains("on"), 4000);
+        await sleep(400);
+        const crop = doc.querySelector("button.npe_btn_crop");
+        if (crop && !crop.classList.contains("on")) crop.click();
+        const sel = fix.dir === "left" ? "button.npe_btn_left_rotate" : "button.npe_btn_right_rotate";
+        const btn = await waitFor(() => { const b = doc.querySelector(sel); return visible(b) && b; }, 4000);
+        if (!btn) { failed.push(f.name); continue; }
+        for (let t = 0; t < fix.times; t++) { btn.click(); await sleep(500); }
+        const confirm = doc.querySelector("button.npe_btn_confirm");
+        if (confirm) confirm.click();
+        await sleep(700);
+        done++;
+      }
+      say(
+        `${done}장을 네이버 편집기로 돌렸어요. 확인한 뒤 오른쪽 위 [완료]를 눌러 주세요.` +
+          (failed.length ? ` 못 돌린 사진 ${failed.length}장: ${failed.join(", ")}` : ""),
+        failed.length ? "partial" : "done"
+      );
+      editorBanner(doc, `AI 추천대로 ${done}장을 돌렸어요 · 확인 후 [완료]를 눌러 주세요 · 원본 파일은 그대로예요`);
+    } catch (e) {
+      say(String((e && e.message) || e), "error");
+    }
   }
 
   // 설정 창의 "최근 정렬 결과 보기" 버튼

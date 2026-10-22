@@ -6,7 +6,7 @@ const G = '#03c75a';
 const COLORS = ['#f6c177','#9ccfd8','#c4a7e7','#eb6f92','#a3be8c','#88c0d0','#ebcb8b','#d08770'];
 const thumb = (n, i, w=150) => `<div style="width:${w}px;height:${Math.round(w*0.75)}px;border-radius:10px;background:linear-gradient(135deg,${COLORS[i%8]},${COLORS[(i+3)%8]});position:relative;box-shadow:0 2px 6px rgba(0,0,0,.12)">
   <div style="position:absolute;left:8px;bottom:6px;background:rgba(0,0,0,.6);color:#fff;font-size:${w>120?13:11}px;padding:2px 7px;border-radius:5px">${n}</div></div>`;
-const toast = (txt) => `<div style="display:inline-block;background:rgba(30,30,30,.92);color:#fff;padding:12px 20px;border-radius:10px;font-size:17px;box-shadow:0 6px 20px rgba(0,0,0,.25);white-space:nowrap"><b style="color:${G}">네이버 블로그 파일 순서 유지</b>: ${txt}</div>`;
+const toast = (txt) => `<div style="display:inline-block;background:rgba(30,30,30,.92);color:#fff;padding:12px 20px;border-radius:10px;font-size:17px;box-shadow:0 6px 20px rgba(0,0,0,.25);white-space:nowrap"><b style="color:${G}">네이버 블로그 사진(파일) 업로드 순서 유지</b>: ${txt}</div>`;
 const sorted = ['IMG_1.jpg','IMG_2.jpg','IMG_3.jpg','IMG_4.jpg','IMG_5.jpg','IMG_10.jpg'];
 const mixed = ['IMG_4.jpg','IMG_10.jpg','IMG_1.jpg','IMG_5.jpg','IMG_2.jpg','IMG_3.jpg'];
 const idx = n => sorted.indexOf(n);
@@ -77,7 +77,7 @@ const idx = n => sorted.indexOf(n);
       </div>
       <div style="width:350px;background:#fff;border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.16);border:1px solid #e3e5e8;overflow:hidden;align-self:flex-start">
         <div style="padding:14px 16px 12px;border-bottom:1px solid #eef0f2">
-          <div style="display:flex;justify-content:space-between"><b style="color:${G};font-size:15px">네이버 블로그 파일 순서 유지</b><span style="color:#666;font-size:20px;line-height:18px">×</span></div>
+          <div style="display:flex;justify-content:space-between"><b style="color:${G};font-size:15px">네이버 블로그 사진(파일) 업로드 순서 유지</b><span style="color:#666;font-size:20px;line-height:18px">×</span></div>
           <div style="color:#555;font-size:13px;margin-top:4px">파일 6개를 촬영일 오름차순으로 정리했어요</div>
           <div style="color:#999;font-size:12px;margin-top:2px">2026.10.18 17:05</div>
         </div>
@@ -89,7 +89,7 @@ const idx = n => sorted.indexOf(n);
   'promo-small-440x280.png': [440,280, `
    <div style="height:100%;background:${G};display:flex;flex-direction:column;justify-content:center;padding:0 30px;box-sizing:border-box;color:#fff">
      <img src="${icon}" style="width:56px;height:56px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.15)">
-     <div style="font-size:27px;font-weight:800;margin-top:16px;line-height:1.25">네이버 블로그<br>파일 순서 유지</div>
+     <div style="font-size:25px;font-weight:800;margin-top:14px;line-height:1.25">네이버 블로그<br>사진(파일) 업로드 순서 유지</div>
      <div style="font-size:15px;margin-top:10px;opacity:.92">사진, 보던 순서 그대로 블로그에</div>
    </div>`],
   'marquee-1400x560.png': [1400,560, `

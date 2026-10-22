@@ -11,3 +11,7 @@ _삭제필요_실수로_복사된_시스템파일/
 # 의존성 / 빌드 산출물
 node_modules/
 *.log
+
+# 임시·정리 대기 폴더
+_to_delete/
+Claude outputs/
