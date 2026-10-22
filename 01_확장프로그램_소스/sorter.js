@@ -5,7 +5,8 @@
   if (window.__nboInstalled) return;
   window.__nboInstalled = true;
 
-  const APP = "네이버 블로그 사진(파일) 업로드 순서 유지";
+  const APP = "네이버 블로그 사진(파일) 업로드 순서 유지 +회전(AI)";
+  const APP_SHORT = "사진 업로드 순서 유지 +회전(AI)"; // 화면 표시용 (알림·목록 제목)
   const DEFAULTS = { enabled: true, criterion: "name", order: "asc", toast: true, panel: true, thumbs: true, aiMode: "off" };
   const LABEL = { name: "파일명", lastModified: "수정한 날짜", exif: "촬영일", size: "크기", type: "종류" };
   const collator = new Intl.Collator("ko", { numeric: true, sensitivity: "base" });
@@ -552,7 +553,7 @@
   function showToast(r) {
     const el = document.createElement("div");
     const title = document.createElement("strong");
-    title.textContent = APP;
+    title.textContent = APP_SHORT;
     title.style.cssText = "color:#03c75a";
     let msg = summary(r);
     const miss = missingCount(r);
@@ -711,7 +712,7 @@
     top.className = "top";
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = APP;
+    title.textContent = APP_SHORT;
     const close = document.createElement("button");
     close.className = "close";
     close.title = "닫기";
@@ -866,7 +867,14 @@
 
   function maybeStartAi(r) {
     const s = settings();
-    if (!s.aiReady || r.ai) return;
+    if (r.ai || !s.aiMode || s.aiMode === "off") return;
+    if (!s.aiReady) {
+      // 모드는 켰는데 모델이 아직 없거나 내려받는 중/실패
+      r.ai = { state: "error", done: 0, total: 0, byKey: new Map(), skip: new Set(), rotated: new Set(), run: null,
+        error: "AI 모델이 아직 준비되지 않았어요. 확장 아이콘 → 설정 창에서 설치 상태를 확인해 주세요." };
+      if (panelHost && panelHost.isConnected && lastResult === r) showPanel(r);
+      return;
+    }
     const files = r.arr.filter(canDecode); // HEIC 등 브라우저가 열 수 없는 형식은 건너뜀
     if (!files.length) return;
     r.ai = { state: "running", done: 0, total: files.length, byKey: new Map(), skip: new Set(), rotated: new Set(), error: null, run: null };
