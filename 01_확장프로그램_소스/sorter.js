@@ -1176,7 +1176,28 @@
           btn = await waitFor(rotBtn, 2500);
         }
         if (!btn) { stuck.push(f.name); continue; }
-        for (let t = 0; t < fix.times; t++) { btn.click(); await sleep(500); }
+        // 패널이 막 열렸거나 사진을 불러오는 중이면 네이버가 클릭을 무시하므로 잠깐 기다림
+        await sleep(900);
+        // 실제로 돌았는지 확인: 회전하면 [재설정] 버튼이 활성화됨 (disable 표시가 사라짐)
+        const resetBtn = () => doc.querySelector("button.npe_btn_reset");
+        const changed = () => { const b = resetBtn(); return b && !b.classList.contains("disable") && !b.disabled; };
+        let turned = 0;
+        for (let t = 0; t < fix.times; t++) {
+          const before = resetBtn() ? changed() : null;
+          let ok = false;
+          for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+            const b = rotBtn();
+            if (!b) break;
+            b.click();
+            if (before === false) ok = !!(await waitFor(changed, 1500));
+            else { await sleep(800); ok = true; } // 확인 수단이 없거나 이미 바뀐 상태(두 번째 회전)면 클릭만
+            if (!ok) await sleep(700);
+          }
+          if (!ok) break;
+          turned++;
+          await sleep(400);
+        }
+        if (turned < fix.times) { stuck.push(f.name); continue; }
         const confirm = await waitFor(() => { const b = doc.querySelector("button.npe_btn_confirm"); return visible(b) && b; }, 2000);
         if (!confirm) { stuck.push(f.name); continue; }
         confirm.click();
@@ -1187,17 +1208,18 @@
         ai.rotated.add(fileKey(f));
       }
       ai.debug.stuck = stuck;
+      ai.debug.resetBtn = !!doc.querySelector("button.npe_btn_reset");
       ai.debug.notInEditor = failed;
       if (!done) {
         throw new Error(
           stuck.length
-            ? `편집기에서 사진은 찾았는데 회전 버튼을 누르지 못했어요. [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`
+            ? `회전 버튼을 눌렀지만 사진이 돌아간 것을 확인하지 못했어요. [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`
             : `편집기에서 돌릴 사진을 찾지 못했어요 (편집기 사진 ${thumbs.length}장). [취소]를 누르고 [진단 정보 복사]를 보내 주세요.`
         );
       }
       if (stuck.length) {
         say(
-          `${done}장을 돌렸어요. ${stuck.length}장(${stuck.join(", ")})은 회전 버튼을 누르지 못했어요. ` +
+          `${done}장을 돌렸어요. ${stuck.length}장(${stuck.join(", ")})은 돌아간 것을 확인하지 못했어요. ` +
             `편집기에서 직접 돌리거나, [취소] 후 [진단 정보 복사]를 보내 주세요.`,
           "partial"
         );

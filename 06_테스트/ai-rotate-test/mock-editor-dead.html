@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8">
+<style>
+ .se-component{margin:8px;display:inline-block;border:1px solid #ccc} img.se-image-resource{width:160px;display:block}
+ #ctx{display:none;position:fixed;top:0;left:300px;background:#eee;padding:4px}
+ #npe{display:none;position:fixed;inset:0;background:#111;color:#fff;z-index:10}
+ #npe button{margin:4px} .npe_rotate_btn{display:none} .crop-on .npe_rotate_btn{display:inline-block}
+ .npe_image_list_thumb_wrap{display:inline-block;width:40px;height:40px;background:#555;margin:2px} .npe_image_list_thumb_wrap.on{outline:2px solid lime}
+</style>
+<input type="file" id="up" multiple accept="image/*">
+<div id="ctx"><button class="se-image-edit-toolbar-button se-context-toolbar-basic-button" data-name="image-edit">사진 편집</button></div>
+<div id="doc"></div>
+<div id="npe">
+  <button class="npe_btn_header npe_btn_cancel">취소</button><button class="npe_btn_header npe_btn_submit">완료</button>
+  <button class="npe_btn_control npe_btn_crop" data-targetcontrol="crop">crop</button>
+  <span id="rotbox"><button class="npe_rotate_btn npe_btn_left_rotate">왼쪽으로 회전</button><button class="npe_rotate_btn npe_btn_right_rotate">오른쪽으로 회전</button><button class="npe_crop_btn npe_btn_reset disable">재설정</button><button class="npe_crop_btn npe_btn_confirm">적용</button></span>
+  <div id="list"></div>
+</div>
+<script>
+window.__rot = {}; window.__log = []; let busyUntil = 0; const busy = () => { busyUntil = Date.now() + 700; }; const resetB = () => document.querySelector('.npe_btn_reset');
+let n = 0; let cur = null; let pending = 0;
+function addComp(src){ const id='SE-'+(++n)+'-'+Math.random().toString(16).slice(2,8);
+  const c=document.createElement('div'); c.className='se-component se-image';
+  c.innerHTML='<button class="se-component-edge-button se-component-edge-button-top" data-compid="'+id+'"></button><img class="se-image-resource">';
+  c.querySelector('img').src=src; document.getElementById('doc').append(c); c.dataset.name=src; return c; }
+// 기존 사진 하나 (이번 업로드가 아님)
+const pre = addComp('data:image/gif;base64,R0lGODlhAQABAAAAACw='); pre.dataset.file='PRE';
+document.getElementById('up').addEventListener('change', (e) => {
+  const files = Array.from(e.target.files);
+  window.__uploadOrder = files.map(f=>f.name);
+  e.target.value=''; // 실제 에디터처럼 업로드 후 파일 선택 초기화
+  setTimeout(()=>{ for (const f of files){ const c=addComp(URL.createObjectURL(f)); c.dataset.file=f.name; } }, 500);
+});
+document.addEventListener('mousedown', (e) => { if (e.target.matches('img.se-image-resource')) document.getElementById('ctx').style.display='block'; });
+document.querySelector('.se-image-edit-toolbar-button').addEventListener('click', () => {
+  const list=document.getElementById('list'); list.innerHTML='';
+  for (const c of document.querySelectorAll('.se-component')) {
+    const id=c.querySelector('[data-compid]').dataset.compid;
+    const t=document.createElement('div'); t.className='npe_image_list_thumb_wrap _item'; t.dataset.key=id; t.dataset.file=c.dataset.file;
+    t.addEventListener('click',()=>{ document.querySelectorAll('.npe_image_list_thumb_wrap').forEach(x=>x.classList.remove('on')); t.classList.add('on'); cur=t; pending=0; busy(); resetB().classList.add('disable'); });
+    list.append(t);
+  }
+  list.firstChild.click();
+  setTimeout(()=>{ document.getElementById('npe').style.display='block'; }, 300);
+});
+const crop=document.querySelector('.npe_btn_crop');
+crop.addEventListener('click',()=>{ const npe=document.getElementById('npe'); const open=!npe.classList.contains('crop-on'); npe.classList.toggle('crop-on', open); crop.classList.add('on'); if (open) busy(); });
+document.querySelector('.npe_btn_left_rotate').addEventListener('click',()=>{ return; pending-=90; resetB().classList.remove('disable'); });
+document.querySelector('.npe_btn_right_rotate').addEventListener('click',()=>{ if (Date.now() < busyUntil) return; pending+=90; resetB().classList.remove('disable'); });
+document.querySelector('.npe_btn_confirm').addEventListener('click',()=>{ const f=cur.dataset.file; window.__rot[f]=(window.__rot[f]||0)+pending; pending=0; document.getElementById('npe').classList.remove('crop-on'); resetB().classList.add('disable'); });
+document.querySelector('.npe_btn_submit').addEventListener('click',()=>{ window.__submitted=true; });
+</script>

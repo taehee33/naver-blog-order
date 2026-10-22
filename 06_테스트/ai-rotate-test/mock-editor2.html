@@ -12,11 +12,11 @@
 <div id="npe">
   <button class="npe_btn_header npe_btn_cancel">취소</button><button class="npe_btn_header npe_btn_submit">완료</button>
   <button class="npe_btn_control npe_btn_crop" data-targetcontrol="crop">crop</button>
-  <span id="rotbox"><button class="npe_rotate_btn npe_btn_left_rotate">왼쪽으로 회전</button><button class="npe_rotate_btn npe_btn_right_rotate">오른쪽으로 회전</button><button class="npe_crop_btn npe_btn_confirm">적용</button></span>
+  <span id="rotbox"><button class="npe_rotate_btn npe_btn_left_rotate">왼쪽으로 회전</button><button class="npe_rotate_btn npe_btn_right_rotate">오른쪽으로 회전</button><button class="npe_crop_btn npe_btn_reset disable">재설정</button><button class="npe_crop_btn npe_btn_confirm">적용</button></span>
   <button class="npe_btn_image_list">이미지</button><div id="list"></div>
 </div>
 <script>
-window.__rot = {}; window.__log = [];
+window.__rot = {}; window.__log = []; let busyUntil = 0; const busy = () => { busyUntil = Date.now() + 700; }; const resetB = () => document.querySelector('.npe_btn_reset');
 let n = 0; let cur = null; let pending = 0;
 function addComp(src){ const id='SE-'+(++n)+'-'+Math.random().toString(16).slice(2,8);
   const c=document.createElement('div'); c.className='se-component se-image';
@@ -41,15 +41,15 @@ document.querySelector('.se-image-edit-toolbar-button').addEventListener('click'
     for (const c of subset) {
       const id=c.querySelector('[data-compid]').dataset.compid;
       const t=document.createElement('div'); t.className='npe_image_list_thumb_wrap _item'; t.dataset.key=id; t.dataset.file=c.dataset.file;
-      t.addEventListener('click',()=>{ document.querySelectorAll('.npe_image_list_thumb_wrap').forEach(x=>x.classList.remove('on')); t.classList.add('on'); cur=t; pending=0; });
+      t.addEventListener('click',()=>{ document.querySelectorAll('.npe_image_list_thumb_wrap').forEach(x=>x.classList.remove('on')); t.classList.add('on'); cur=t; pending=0; busy(); resetB().classList.add('disable'); });
       list.append(t);
     } list.firstChild.click(); }, 300); };
   setTimeout(()=>{ document.getElementById('npe').style.display='block'; }, 300);
 });
 const crop=document.querySelector('.npe_btn_crop');
-crop.addEventListener('click',()=>{ const npe=document.getElementById('npe'); const open=!npe.classList.contains('crop-on'); npe.classList.toggle('crop-on', open); crop.classList.add('on'); });
-document.querySelector('.npe_btn_left_rotate').addEventListener('click',()=>{ pending-=90; });
-document.querySelector('.npe_btn_right_rotate').addEventListener('click',()=>{ pending+=90; });
-document.querySelector('.npe_btn_confirm').addEventListener('click',()=>{ const f=cur.dataset.file; window.__rot[f]=(window.__rot[f]||0)+pending; pending=0; document.getElementById('npe').classList.remove('crop-on'); });
+crop.addEventListener('click',()=>{ const npe=document.getElementById('npe'); const open=!npe.classList.contains('crop-on'); npe.classList.toggle('crop-on', open); crop.classList.add('on'); if (open) busy(); });
+document.querySelector('.npe_btn_left_rotate').addEventListener('click',()=>{ if (Date.now() < busyUntil) return; pending-=90; resetB().classList.remove('disable'); });
+document.querySelector('.npe_btn_right_rotate').addEventListener('click',()=>{ if (Date.now() < busyUntil) return; pending+=90; resetB().classList.remove('disable'); });
+document.querySelector('.npe_btn_confirm').addEventListener('click',()=>{ const f=cur.dataset.file; window.__rot[f]=(window.__rot[f]||0)+pending; pending=0; document.getElementById('npe').classList.remove('crop-on'); resetB().classList.add('disable'); });
 document.querySelector('.npe_btn_submit').addEventListener('click',()=>{ window.__submitted=(window.__submitted||0)+1; document.getElementById('npe').style.display='none'; document.getElementById('list').innerHTML=''; });
 </script>

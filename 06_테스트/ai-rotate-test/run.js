@@ -55,7 +55,7 @@ const fs = require('fs'), path = require('path');
   if (process.env.AIOFF) { await ctx.close(); return; }
   // 4) 돌리기 버튼
   await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-go').click());
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 160; i++) {
     const s = await fr.evaluate(() => document.getElementById('nbo-panel-host').shadowRoot.querySelector('.ai-status').textContent);
     if (/돌렸어요|못|찾지|없어요|멈췄|열리지/.test(s)) { console.log('RUN:', s); break; }
     await new Promise(r => setTimeout(r, 500));
