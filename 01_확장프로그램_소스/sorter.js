@@ -3,7 +3,17 @@
 // 정렬된 순서로 돌려주고, 정렬 결과를 알림과 오른쪽 목록 패널로 보여줍니다.
 (() => {
   if (window.__nboInstalled) return;
+  // 카페 에디터의 숨은 입력 보조 iframe(#input_buffer…)에는 본문 복사본이 있어 중복 처리될 수 있으므로 건너뜀
+  try { if (window.frameElement && /^input_buffer/.test(window.frameElement.id || "")) return; } catch (_) {}
   window.__nboInstalled = true;
+
+  // 카페는 사이트 전체에 주입되므로(SPA) 글쓰기·수정 화면에서만 정렬함. 블로그는 기존과 같음
+  function pageLoc() { try { return window.top.location; } catch (_) { return location; } }
+  const CAFE_EDITOR_PATH = /\/articles\/write|\/articles\/\d+\/modify|ArticleWrite|ArticleModify/i;
+  function onEditorPage() {
+    const l = pageLoc();
+    return l.hostname !== "cafe.naver.com" || CAFE_EDITOR_PATH.test(l.pathname);
+  }
 
   const APP = "네이버 블로그 사진(파일) 업로드 순서 유지 +회전(AI)";
   const APP_SHORT = "사진 업로드 순서 유지 +회전(AI)"; // 화면 표시용 (알림·목록 제목)
@@ -265,7 +275,7 @@
 
   function prepare(list) {
     const s = settings();
-    if (!s.enabled || !list || list.length < 2) return null;
+    if (!s.enabled || !onEditorPage() || !list || list.length < 2) return null;
     const sig = signature(list, s);
     let entry = cache.get(sig);
     if (entry) {
@@ -395,7 +405,7 @@
 
   async function sortEntries(entries) {
     const s = settings();
-    if (!s.enabled || !entries || entries.length < 2) return entries;
+    if (!s.enabled || !onEditorPage() || !entries || entries.length < 2) return entries;
     const fileEntries = entries.filter((e) => e.isFile);
     const dirEntries = entries.filter((e) => !e.isFile).sort((a, b) => collator.compare(a.name, b.name));
     if (fileEntries.length < 2) return fileEntries.concat(dirEntries);
@@ -1175,7 +1185,7 @@
         // 자르기·회전 패널 열기: [적용] 뒤에는 패널이 닫혀도 버튼 표시(on)가 남아 있을 수 있어
         // 버튼 표시 대신 회전 버튼이 실제로 보이는지로 판단하고, 안 보이면 자르기 버튼을 눌러 엶
         const sel = fix.dir === "left" ? "button.npe_btn_left_rotate" : "button.npe_btn_right_rotate";
-        const rotBtn = () => { const b = doc.querySelector(sel); return visible(b) && b; };
+        const rotBtn = () => Array.from(doc.querySelectorAll(sel)).find(visible) || null;
         let btn = rotBtn();
         for (let t = 0; !btn && t < 2; t++) {
           const crop = doc.querySelector("button.npe_btn_crop");
@@ -1206,7 +1216,7 @@
           await sleep(400);
         }
         if (turned < fix.times) { stuck.push(f.name); continue; }
-        const confirm = await waitFor(() => { const b = doc.querySelector("button.npe_btn_confirm"); return visible(b) && b; }, 2000);
+        const confirm = await waitFor(() => Array.from(doc.querySelectorAll("button.npe_btn_confirm")).find(visible) || null, 2000);
         if (!confirm) { stuck.push(f.name); continue; }
         confirm.click();
         // 패널이 닫힐 때까지 잠깐 기다림

@@ -79,7 +79,7 @@ $("#show").addEventListener("click", () => {
     if (!tab) return;
     chrome.tabs.sendMessage(tab.id, { type: "nbo-show-panel" }, () => {
       if (chrome.runtime.lastError) {
-        $("#msg").textContent = "네이버 블로그 글쓰기 화면에서 눌러 주세요.";
+        $("#msg").textContent = "네이버 블로그·카페 글쓰기 화면에서 눌러 주세요.";
       } else {
         window.close();
       }
