@@ -1,5 +1,6 @@
 // v1.4.0 스토어 이미지 생성 (정렬 + 사진 방향 추천 AI + 네이버 카페 지원)
-// 필요한 파일: cap-panel.png(실제 결과 목록 캡처), cap-banner.png(실제 회전 완료 배너), 필름 사진 4814_10/12/28/30.jpg
+// 필요한 파일: 필름 사진 4814_10.jpg(누운 사진)·4814_30.jpg(바로 선 사진), 확장 소스(sorter.js의 PANEL_CSS로 결과 목록을 그림)
+// v1.4.0: 예시 사진을 2장(10·30)만 쓰도록 변경, 결과 목록은 실제 확장 CSS로 다시 그림
 // 실행: EXT=<확장 소스 폴더> node store-images-render-v1.4.js
 const { chromium } = require(process.env.PW || 'playwright');
 const fs = require('fs');
@@ -13,8 +14,8 @@ const thumb = (n, i, w=150) => `<div style="width:${w}px;height:${Math.round(w*0
   <div style="position:absolute;left:8px;bottom:6px;background:rgba(0,0,0,.6);color:#fff;font-size:${w>120?13:11}px;padding:2px 7px;border-radius:5px">${n}</div></div>`;
 const toast = (txt) => `<div style="display:inline-block;background:rgba(30,30,30,.92);color:#fff;padding:12px 20px;border-radius:10px;font-size:17px;box-shadow:0 6px 20px rgba(0,0,0,.25);white-space:nowrap"><b style="color:${G}">${NAME_SHORT}</b>: ${txt}</div>`;
 const sorted = ['IMG_1.jpg','IMG_2.jpg','IMG_3.jpg','IMG_4.jpg','IMG_5.jpg','IMG_10.jpg'];
-// 필름 사진: 10·12·28은 누워 있음(왼쪽 90° 돌리면 바로 섬), 30은 바로 선 사진
-const film = { s10: uri('4814_10.jpg'), s12: uri('4814_12.jpg'), s28: uri('4814_28.jpg'), u30: uri('4814_30.jpg') };
+// 필름 사진: 10은 누워 있음(왼쪽 90° 돌리면 바로 섬), 30은 바로 선 사진
+const film = { s10: uri('4814_10.jpg'), u30: uri('4814_30.jpg') };
 // 누운 사진을 바로 세운 모습 (가로 사진 영역 안에서 -90° 회전)
 const photo = (src, w, { rotate = false, tag = '' } = {}) => {
   const h = Math.round(w * 2 / 3);
@@ -43,11 +44,33 @@ const chip = (txt, color = G, bg = '#e6f8ee') => `<span style="display:inline-bl
   const ph = await pp.evaluate(() => Math.ceil(document.body.getBoundingClientRect().height));
   await pp.setViewportSize({ width: 300, height: ph });
   await pp.screenshot({ path: 'popup-v1.4.png' });
+  // 결과 목록: 확장의 실제 패널 CSS(sorter.js PANEL_CSS)로 2장짜리 목록을 그림
+  const src = fs.readFileSync(EXT + '/sorter.js', 'utf8');
+  const PANEL_CSS = src.match(/const PANEL_CSS = `([\s\S]*?)`;/)[1].replace(':host { all: initial; }', '')
+    .replace('position: fixed; top: 88px; right: 16px;', 'position: static;').replace('max-height: calc(100vh - 120px);', '');
+  const row = (n, name, size, rot, img) => `<li class="has-thumb"><span class="n">${n}</span><span class="name">${name}</span>
+    <span class="val">${size}${rot ? `<span class="rot">↺ ${rot}</span>` : ''}</span><img class="thumb" src="${img}"></li>`;
+  const panelHtml = `<style>${PANEL_CSS} body{margin:0;background:#fff} .wrap{font-family:"Noto Sans CJK KR",sans-serif !important}</style>
+   <div class="wrap"><header><div class="top"><span class="title">${NAME_SHORT}</span><button class="close">×</button></div>
+     <div class="meta">파일 2개를 파일명 오름차순으로 정리했어요</div><div class="sub">2026.10.25 18:30</div>
+     <div class="ai"><div class="ai-head">사진 방향 추천 (AI)</div><div class="ai-status">회전 추천 1장</div>
+       <button class="ai-go">네이버 편집기로 1장 돌리기</button>
+       <div class="ai-note">회전은 네이버 에디터의 「사진 편집 → 자르기, 회전」 기능으로 해요. 내 컴퓨터의 원본 파일은 건드리지 않아요.</div>
+       <div class="ai-note">AI 판단이라 틀릴 수 있어요. 추천 표시를 눌러 뺄 수 있고, 편집기에서 확인한 뒤 [완료]를 눌러 주세요.</div>
+       <div class="ai-note">사진은 내 컴퓨터 안에서만 분석되고 어디로도 전송되지 않아요.</div></div></header>
+     <ol>${row('01', '4814_10.jpg', '90 KB', '왼쪽 90° 92%', film.s10)}${row('02', '4814_30.jpg', '175 KB', '', film.u30)}</ol>
+     <footer><label><input type="checkbox"> 다음부터 자동으로 열지 않기</label></footer></div>`;
+  const pg = await b.newPage({ viewport: { width: 342, height: 800 }, deviceScaleFactor: 2 });
+  await pg.setContent(panelHtml);
+  await pg.waitForTimeout(200);
+  await (await pg.$('.wrap')).screenshot({ path: 'cap-panel-v1.4.png' });
+  await pg.close();
   const popupImg = (h) => `<img src="${uri('popup-v1.4.png')}" style="height:${h}px;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.18);border:1px solid #e5e5e5;background:#fff">`;
-  const panelImg = (w) => `<img src="${uri('cap-panel.png')}" style="width:${w}px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);border:1px solid #e3e5e8;background:#fff;display:block">`;
+  const panelImg = (w) => `<img src="${uri('cap-panel-v1.4.png')}" style="width:${w}px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);border:1px solid #e3e5e8;background:#fff;display:block">`;
   const bannerImg = (h) => `<img src="${uri('cap-banner.png')}" style="height:${h}px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25)">`;
   const icon = uri(EXT + '/icons/icon128.png');
   const recTag = `<div style="position:absolute;left:8px;top:8px">${chip('↺ 회전 추천')}</div>`;
+  const sameTag = `<div style="position:absolute;left:8px;top:8px">${chip('그대로 두기', '#555', '#f1f3f5')}</div>`;
   const okTag = `<div style="position:absolute;left:8px;top:8px">${chip('✓ 바로 섰어요', '#fff', G)}</div>`;
 
   const scenes = {
@@ -60,9 +83,10 @@ const chip = (txt, color = G, bg = '#e6f8ee') => `<span style="display:inline-bl
       <div style="flex:1;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.08);padding:24px 28px">
         <div style="font-size:14px;color:#999">블로그 글쓰기</div>
         <div style="font-size:24px;font-weight:700;color:#222;border-bottom:1px solid #eee;padding-bottom:12px">필름 사진 한 롤</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:18px;justify-items:center">
-          ${photo(film.s10, 330, { tag: recTag })}${photo(film.s12, 330, { tag: recTag })}${photo(film.s28, 330, { tag: recTag })}${photo(film.u30, 330)}
+        <div style="display:flex;gap:20px;margin-top:26px;justify-content:center;align-items:center">
+          ${photo(film.s10, 350, { tag: recTag })}${photo(film.u30, 350)}
         </div>
+        <div style="font-size:15px;color:#888;margin-top:18px;text-align:center">왼쪽은 누워서 올라간 사진, 오른쪽은 이미 바로 선 사진이에요</div>
       </div>
       ${panelImg(342)}
     </div>
@@ -75,15 +99,15 @@ const chip = (txt, color = G, bg = '#e6f8ee') => `<span style="display:inline-bl
     <div style="display:flex;gap:36px;align-items:center;margin-top:40px">
       <div>
         <div style="font-size:18px;font-weight:700;color:#e5484d;margin-bottom:12px">올린 그대로</div>
-        <div style="border:2px solid #e5484d;border-radius:16px;padding:22px;display:flex;gap:16px">${photo(film.s10, 270)}${photo(film.s28, 270)}</div>
+        <div style="border:2px solid #e5484d;border-radius:16px;padding:22px;display:flex;gap:16px">${photo(film.s10, 230)}${photo(film.u30, 230)}</div>
       </div>
       <div style="font-size:54px;color:${G};font-weight:800;margin-top:30px">→</div>
       <div>
         <div style="font-size:18px;font-weight:700;color:${G};margin-bottom:12px">네이버 편집기로 회전한 뒤</div>
-        <div style="border:2px solid ${G};border-radius:16px;padding:22px;display:flex;gap:16px;align-items:center">${photo(film.s10, 270, { rotate: true, tag: okTag })}${photo(film.s28, 270, { rotate: true, tag: okTag })}</div>
+        <div style="border:2px solid ${G};border-radius:16px;padding:22px;display:flex;gap:16px;align-items:center">${photo(film.s10, 230, { rotate: true, tag: okTag })}${photo(film.u30, 230, { tag: sameTag })}</div>
       </div>
     </div>
-    <div style="margin-top:34px;background:#03c75a;color:#fff;padding:12px 22px;border-radius:10px;font-size:17px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.18)">AI 추천대로 3장을 돌렸어요 · 확인 후 [완료]를 눌러 주세요 · 원본 파일은 그대로예요</div>
+    <div style="margin-top:34px;background:#03c75a;color:#fff;padding:12px 22px;border-radius:10px;font-size:17px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.18)">AI 추천대로 1장을 돌렸어요 · 확인 후 [완료]를 눌러 주세요 · 원본 파일은 그대로예요</div>
     <div style="font-size:16px;color:#888;margin-top:16px">AI 판단이라 틀릴 수 있어요 · 추천 표시를 눌러 뺄 수 있고, 마지막 [완료]는 직접 눌러요</div>
    </div>`],
   // 3) 블로그·카페 순서 유지 (v1.4.0 NEW: 카페)
