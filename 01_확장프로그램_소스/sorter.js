@@ -693,7 +693,11 @@
     .ai-dbg { all: unset; display: inline-block; margin: 6px 0 2px; padding: 3px 10px; border: 1px solid #ccd; border-radius: 6px;
       font-size: 11px; color: #555; cursor: pointer; background: #fff; }
     .ai-note { margin-top: 4px; color: #667; font-size: 11px; line-height: 1.4; }
-    .ai-tip { margin-top: 8px; padding: 7px 10px; border-radius: 8px; background: #f6f8fa; color: #555; font-size: 11px; line-height: 1.45; }
+    .ai-off { all: unset; box-sizing: border-box; cursor: pointer; display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; background: #fff4e0; color: #b06000;
+      border: 1px solid #f5d9a8; font-size: 11px; font-weight: 700; }
+    .ai-off:hover { background: #ffecc7; }
+    .ai-tip[hidden] { display: none; }
+    .ai-tip { margin: 6px 0 8px; padding: 7px 10px; border-radius: 8px; background: #f6f8fa; color: #555; font-size: 11px; line-height: 1.45; }
     .ai-tip b { color: #03a24a; }
     .rot { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: #e6f8ee; color: #03a24a;
       font-weight: 700; cursor: pointer; }
@@ -704,6 +708,7 @@
 
   let panelHost = null;
 
+  let aiTipOpen = false; // "회전 AI 꺼짐" 안내 펼침 상태
   function showPanel(r) {
     if (!r) return;
     if (!panelHost || !panelHost.isConnected) {
@@ -734,7 +739,29 @@
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = summary(r);
-    header.append(top, meta);
+    header.append(top);
+    if (!r.ai && settings().aiMode === "off" && r.arr.some(canDecode)) {
+      // 회전 AI를 쓰지 않는 상태: 제목 바로 아래에 상태 배지 + 안내
+      // 배지를 누르면 안내가 펼쳐지고 접힘 (기본: 접힘, 이번 페이지에서는 상태 유지)
+      const badge = document.createElement("button");
+      badge.type = "button";
+      badge.className = "ai-off";
+      const tip = document.createElement("div");
+      tip.className = "ai-tip";
+      const b = document.createElement("b");
+      b.textContent = "회전 AI";
+      tip.append(b, " 모델을 내려받으면 누워 있는 사진을 찾아 회전을 추천해 드려요. 확장 아이콘 → 설정 창의 '사진 방향 추천 (AI)'에서 켤 수 있어요. 사진은 내 컴퓨터 안에서만 분석되고, 외부로 전송되거나 AI 학습에 쓰이지 않아요.");
+      const paint = () => {
+        badge.textContent = "회전 AI 꺼짐 " + (aiTipOpen ? "▴" : "▾");
+        badge.title = aiTipOpen ? "안내 접기" : "안내 펼치기";
+        badge.setAttribute("aria-expanded", String(aiTipOpen));
+        tip.hidden = !aiTipOpen;
+      };
+      origAdd.call(badge, "click", () => { aiTipOpen = !aiTipOpen; paint(); });
+      paint();
+      header.append(badge, tip);
+    }
+    header.append(meta);
     const miss = missingCount(r);
     const sub = document.createElement("div");
     sub.className = "sub";
@@ -745,15 +772,6 @@
     header.append(sub);
     const aiBox = buildAiBox(r);
     if (aiBox) header.append(aiBox);
-    else if (settings().aiMode === "off" && r.arr.some(canDecode)) {
-      // AI 모델을 아직 받지 않은 경우: 회전 추천 기능 안내
-      const tip = document.createElement("div");
-      tip.className = "ai-tip";
-      const b = document.createElement("b");
-      b.textContent = "회전 AI";
-      tip.append(b, " 모델을 내려받으면 누워 있는 사진을 찾아 회전을 추천해 드려요. 확장 아이콘 → 설정 창의 '사진 방향 추천 (AI)'에서 켤 수 있어요. 사진은 내 컴퓨터 안에서만 분석되고, 외부로 전송되거나 AI 학습에 쓰이지 않아요.");
-      header.append(tip);
-    }
 
     const ol = document.createElement("ol");
     const showThumbs = settings().thumbs !== false;
