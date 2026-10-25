@@ -11,6 +11,8 @@
 ## 출처와 라이선스
 
 - 원본: [DuarteBarbosa/deep-image-orientation-detection](https://huggingface.co/DuarteBarbosa/deep-image-orientation-detection) (EfficientNetV2, MIT License)
+  - 저작권: Copyright (c) 2025 Duarte Barbosa · GitHub: https://github.com/duartebarbosadev/deep-image-orientation-detection
+  - 라이선스 전문: 이 폴더의 [`LICENSE`](LICENSE) (재배포 시 함께 둘 것)
 - 위 두 파일은 원본 ONNX(`orientation_model_v2_0.9882.onnx`)를 변환한 것입니다.
   - fp16: `onnxconverter_common.float16` (입출력은 float32 유지)
   - int8: `onnxruntime.quantization.quantize_dynamic` (가중치 QUInt8)
