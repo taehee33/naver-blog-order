@@ -15,7 +15,7 @@
     return l.hostname !== "cafe.naver.com" || CAFE_EDITOR_PATH.test(l.pathname);
   }
 
-  const APP = "네이버 블로그 사진(파일) 업로드 순서 유지 +회전(AI)";
+  const APP = "네이버 블로그·카페 사진(파일) 업로드 순서 유지 +회전(AI)";
   const APP_SHORT = "사진 업로드 순서 유지 +회전(AI)"; // 화면 표시용 (알림·목록 제목)
   const DEFAULTS = { enabled: true, criterion: "name", order: "asc", toast: true, panel: true, thumbs: true, aiMode: "off" };
   const LABEL = { name: "파일명", lastModified: "수정한 날짜", exif: "촬영일", size: "크기", type: "종류" };
